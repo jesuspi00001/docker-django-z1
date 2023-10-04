@@ -217,6 +217,7 @@ class Query(graphene.ObjectType):
     user = graphene.Field(UserType, id=graphene.Int())
     ideas = graphene.List(IdeaType)
     visible_ideas = graphene.List(IdeaType)
+    user_ideas = graphene.List(IdeaType)
 
     def resolve_user(self, info, id):
         return User.objects.get(pk=id)
@@ -240,8 +241,16 @@ class Query(graphene.ObjectType):
 
         # Metemos todas las ideas visibles para ese usuario en una variable y lo devolvemos.
         all_ideas = list(public_ideas) + list(protected_ideas) + list(private_ideas)
-
         return all_ideas
+    
+    def resolve_user_ideas(self, info):
+        user = info.context.user
+        if not user.is_authenticated:
+            raise Exception('Usuario no autenticado')
+        
+        # Cogemos todas las ideas de ese usuario y las metemos en una lista ordenadas por fecha de creacion descendente.
+        ideas = Idea.objects.filter(user=user).order_by('-created_at')
+        return ideas
 
 
 
