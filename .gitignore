@@ -1,6 +1,3 @@
-# Ignorar la carpeta de datos de la base de datos
-/data/db/
-
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]

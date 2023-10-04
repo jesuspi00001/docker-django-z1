@@ -3,6 +3,8 @@ from graphene_django import DjangoObjectType
 import graphql_jwt
 from graphene_django.types import DjangoObjectType
 from graphql_jwt.decorators import login_required
+from django.contrib.auth.tokens import default_token_generator
+from django.core.mail import send_mail
 from users.models import User
 
 
@@ -103,6 +105,50 @@ class ChangePassword(graphene.Mutation):
         user.set_password(new_password)
         user.save()
         return ChangePassword(success=True)
+    
+
+
+################################################
+########## Correo con magic link ###############
+################################################
+
+# Esta historia de usuario ¡no funciona!. Es una simulacion de como podria hacerse.
+# Se explica a lo largo del metodo.
+class SendResetPasswordEmail(graphene.Mutation):
+    class Arguments:
+        email = graphene.String(required=True)
+
+    success = graphene.Boolean()
+
+    def mutate(self, info, email):
+        try:
+            user = User.objects.get(email=email)
+
+            # Generamos un token
+            reset_token = default_token_generator.make_token(user)
+
+            # Lo asignamos al campo reset_password_token del user
+            user.reset_password_token = reset_token
+            user.save()
+
+            # Url con el token
+            reset_url = f'url/{reset_token}/'
+
+            # Enviamos el correo
+            subject = 'Restaurar password'
+            message = 'Cambia tu password.'
+            from_email = 'app_url@example'
+            user_email = 'url_user@example'
+
+            # El metodo recibe un asunto, un cuerpo, y los email y deberia enviar el correo de restablecimiento.
+            send_mail(subject, message, from_email, user_email)
+
+            return SendResetPasswordEmail(success=True)
+        except User.DoesNotExist:
+            return SendResetPasswordEmail(success=False)
+        
+        # Posteriormente habria que validar el token, que se suele crear con un tiempo de validez limitado.
+        # Una vez validado se podria cambiar la contraseña. ¡Este metodo solo enviar el correo con el magic link!
 
 
 
@@ -133,5 +179,6 @@ class Mutation(graphene.ObjectType):
     update_user = UpdateUser.Field()
     token_auth_with_email = TokenAuthWithEmail.Field()
     change_password = ChangePassword.Field()
+    send_reset_password_email = SendResetPasswordEmail.Field()
 
 schema = graphene.Schema(query=Query, mutation=Mutation)
