@@ -5,7 +5,7 @@ from graphene_django.types import DjangoObjectType
 from graphql_jwt.decorators import login_required
 from django.contrib.auth.tokens import default_token_generator
 from django.core.mail import send_mail
-from users.models import User, Idea
+from users.models import User, Idea, FollowRequest
 
 
 class UserType(DjangoObjectType):
@@ -18,6 +18,12 @@ class IdeaType(DjangoObjectType):
     class Meta:
         model = Idea
         fields = ("id", "user", "text", "visibility", "created_at")
+
+
+class FollowRequestType(DjangoObjectType):
+    class Meta:
+        model = FollowRequest
+        fields = ("id", "requester", "target_user", "created_at", "status")
     
 
 
@@ -40,6 +46,7 @@ class CreateUser(graphene.Mutation):
         user.save()
         return CreateUser(user=user)
 
+
 # CreateIdea
 class CreateIdea(graphene.Mutation):
     class Arguments:
@@ -60,6 +67,39 @@ class CreateIdea(graphene.Mutation):
             return CreateIdea(idea=idea)
         else:
             raise Exception('Usuario no logueado.')
+
+
+class CreateFollowRequest(graphene.Mutation):
+    class Arguments:
+        target_username = graphene.String(required=True)
+
+    follow_request = graphene.Field(FollowRequestType)
+
+    def mutate(self, info, target_username):
+        user = info.context.user
+        if not user.is_authenticated:
+            raise Exception('Usuario no logueado.')
+
+        target_user = User.objects.get(username=target_username)
+
+        # Comprobamos si ya existe una solicitud 
+        existing_request = FollowRequest.objects.filter(
+            requester=user,
+            target_user=target_user,
+            status='pending'
+        ).exists()
+        if existing_request:
+            raise Exception('Ya has enviado una solicitud a este usuario.')
+
+        # Crear una nueva solicitud de seguimiento
+        follow_request = FollowRequest(
+            requester=user,
+            target_user=target_user,
+            status='pending'
+        )
+        follow_request.save()
+        return CreateFollowRequest(follow_request=follow_request)
+    
     
 # DeleteUser
 class DeleteUser(graphene.Mutation):
@@ -76,13 +116,14 @@ class DeleteUser(graphene.Mutation):
         except User.DoesNotExist:
             return DeleteUser(message=f"Usuario {username} no encontrado.")
 
+
 # DeleteIdea
 class DeleteIdea(graphene.Mutation):
     class Arguments:
         id = graphene.ID(required=True)
 
     success = graphene.Boolean()
-    
+
     def mutate(self, info, id):
         user = info.context.user
         if not user.is_authenticated:
@@ -94,6 +135,7 @@ class DeleteIdea(graphene.Mutation):
         
         idea.delete()
         return DeleteIdea(success=True)
+
 
 # UpdateUser
 class UpdateUser(graphene.Mutation):
@@ -111,6 +153,7 @@ class UpdateUser(graphene.Mutation):
         user.password = password
         user.save()
         return UpdateUser(user=user)
+
 
 # UpdateIdea 
 class UpdateIdea(graphene.Mutation):
@@ -279,6 +322,7 @@ class Query(graphene.ObjectType):
 class Mutation(graphene.ObjectType):
     create_user = CreateUser.Field()
     create_idea = CreateIdea.Field()
+    create_follow_request = CreateFollowRequest.Field()
     delete_user = DeleteUser.Field()
     delete_idea = DeleteIdea.Field()
     update_user = UpdateUser.Field()
