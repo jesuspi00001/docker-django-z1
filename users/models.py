@@ -17,5 +17,12 @@ class Idea(models.Model):
     text = models.TextField()
     created_at = models.DateTimeField(auto_now_add=True)
 
+    VISIBILITY_CHOICES = (
+        ('public', 'Public'),
+        ('protected', 'Protected'),
+        ('private', 'Private'),
+    )
+    visibility = models.CharField(max_length=10, choices=VISIBILITY_CHOICES, default='public') # Este campo se usa para establecer la visibilidad de la idea.
+
     def __str__(self):
         return f"Idea escrita por {self.user.username}"

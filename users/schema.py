@@ -17,7 +17,7 @@ class UserType(DjangoObjectType):
 class IdeaType(DjangoObjectType):
     class Meta:
         model = Idea
-        fields = ("id", "user", "text", "created_at")
+        fields = ("id", "user", "text", "visibility", "created_at")
     
 
 
@@ -44,14 +44,18 @@ class CreateUser(graphene.Mutation):
 class CreateIdea(graphene.Mutation):
     class Arguments:
         text = graphene.String(required=True)
+        visibility = graphene.String(required=True)
 
     idea = graphene.Field(IdeaType)
 
-    def mutate(self, info, text):
-        # Verificamos si el usuario esta autenticado.
+    def mutate(self, info, text, visibility):
+        # Verificamos si el usuario esta autenticado. Me parece buena practica comprobar este tipo de cosas.
         user = info.context.user  # Obtenemos el user
         if user.is_authenticated:
-            idea = Idea(user=user, text=text)
+            if visibility not in ["public", "private", "protected"]:
+                raise Exception('Visibility debe ser: public, private o protected.')
+            
+            idea = Idea(user=user, text=text, visibility=visibility)
             idea.save()
             return CreateIdea(idea=idea)
         else:
@@ -73,23 +77,50 @@ class DeleteUser(graphene.Mutation):
         except User.DoesNotExist:
             return DeleteUser(message=f"Usuario {username} no encontrado")
 
-# Update
+# UpdateUser
 class UpdateUser(graphene.Mutation):
     class Arguments:
-        id = graphene.ID(required=True)
-        username = graphene.String()
+        username = graphene.String(required=True)
         email = graphene.String()
         password = graphene.String()
 
     user = graphene.Field(UserType)
 
-    def mutate(self, info, id, username, email, password):
-        user = User.objects.get(pk=id)
+    def mutate(self, info, username, email, password):
+        user = User.objects.get(username=username)
         user.username = username
         user.email = email
         user.password = password
         user.save()
         return UpdateUser(user=user)
+
+# UpdateIdea 
+class UpdateIdea(graphene.Mutation):
+    class Arguments:
+        idea_id = graphene.ID(required=True)
+        text = graphene.String(required=True)
+        visibility = graphene.String(required=True)
+
+    idea = graphene.Field(IdeaType)
+
+    def mutate(self, info, idea_id, text, visibility):
+        user = info.context.user
+        if not user.is_authenticated:
+            raise Exception('Usuario no autenticado')
+        
+        if visibility not in ["public", "private", "protected"]:
+            raise Exception('Visibility debe ser: public, private o protected.')
+
+        idea = Idea.objects.get(pk=idea_id)
+        if idea.user != user:
+            raise Exception('No tienes permiso para editar esta idea')
+        
+        # El metodo permitira actualizar tanto el text como la visibility.
+        idea.text = text
+        idea.visibility = visibility
+        idea.save()
+
+        return UpdateIdea(idea=idea)
     
 
 
@@ -184,12 +215,33 @@ class Query(graphene.ObjectType):
     hello = graphene.String(default_value="Hi!")
     users = graphene.List(UserType)
     user = graphene.Field(UserType, id=graphene.Int())
+    ideas = graphene.List(IdeaType)
+    visible_ideas = graphene.List(IdeaType)
 
     def resolve_user(self, info, id):
         return User.objects.get(pk=id)
 
     def resolve_users(self, info):
         return User.objects.all()
+
+    def resolve_ideas(self, info):
+        return Idea.objects.all()
+    
+    def resolve_visible_ideas(self, info):
+        user = info.context.user
+        if not user.is_authenticated:
+            raise Exception('Usuario no logueado.')
+
+        # Ahora nos quedamos solo con las ideas que el usuario puede ver (usuario logueado en 0.0.0.0/admin).
+        public_ideas = Idea.objects.filter(visibility='public')
+        followed_users = user.followed_users.all()
+        protected_ideas = Idea.objects.filter(visibility='protected', user__in=followed_users)
+        private_ideas = Idea.objects.filter(visibility='private', user=user)
+
+        # Metemos todas las ideas visibles para ese usuario en una variable y lo devolvemos.
+        all_ideas = list(public_ideas) + list(protected_ideas) + list(private_ideas)
+
+        return all_ideas
 
 
 
@@ -202,6 +254,7 @@ class Mutation(graphene.ObjectType):
     create_idea = CreateIdea.Field()
     delete_user = DeleteUser.Field()
     update_user = UpdateUser.Field()
+    update_idea = UpdateIdea.Field()
     token_auth_with_email = TokenAuthWithEmail.Field()
     change_password = ChangePassword.Field()
     send_reset_password_email = SendResetPasswordEmail.Field()
