@@ -60,9 +60,8 @@ class CreateIdea(graphene.Mutation):
             return CreateIdea(idea=idea)
         else:
             raise Exception('Usuario no logueado.')
-        
     
-# Delete
+# DeleteUser
 class DeleteUser(graphene.Mutation):
     class Arguments:
         username = graphene.String(required=True)
@@ -73,9 +72,28 @@ class DeleteUser(graphene.Mutation):
         try:
             user = User.objects.get(username=username)
             user.delete()
-            return DeleteUser(message=f"Usuario {username} eliminado correctamente")
+            return DeleteUser(message=f"Usuario {username} eliminado correctamente.")
         except User.DoesNotExist:
-            return DeleteUser(message=f"Usuario {username} no encontrado")
+            return DeleteUser(message=f"Usuario {username} no encontrado.")
+
+# DeleteIdea
+class DeleteIdea(graphene.Mutation):
+    class Arguments:
+        id = graphene.ID(required=True)
+
+    success = graphene.Boolean()
+    
+    def mutate(self, info, id):
+        user = info.context.user
+        if not user.is_authenticated:
+            raise Exception('Usuario no logueado.')
+
+        idea = Idea.objects.get(pk=id)
+        if idea.user != user:
+            raise Exception('No tienes permiso para eliminar esta idea.')
+        
+        idea.delete()
+        return DeleteIdea(success=True)
 
 # UpdateUser
 class UpdateUser(graphene.Mutation):
@@ -262,6 +280,7 @@ class Mutation(graphene.ObjectType):
     create_user = CreateUser.Field()
     create_idea = CreateIdea.Field()
     delete_user = DeleteUser.Field()
+    delete_idea = DeleteIdea.Field()
     update_user = UpdateUser.Field()
     update_idea = UpdateIdea.Field()
     token_auth_with_email = TokenAuthWithEmail.Field()
