@@ -2,7 +2,7 @@ from django.db import models
 from django.contrib.auth.models import AbstractUser
 
 class User(AbstractUser):
-    username = models.CharField(max_length=30, unique=True, error_messages={'unique': 'Esta dirección de correo electrónico ya está en uso.'})
+    username = models.CharField(max_length=30, unique=True, error_messages={'unique': 'Este usuario ya existe.'})
     email = models.EmailField()
     password = models.CharField(max_length=255)
     # Campo donde almaceneramos el token unico que enviaremos en el correo para restablecer pass. 
@@ -10,3 +10,12 @@ class User(AbstractUser):
 
     def __str__(self):
         return self.username
+    
+
+class Idea(models.Model):
+    user = models.ForeignKey(User, on_delete=models.CASCADE) # Cascade para borrar todas las ideas de un usuario borrado.
+    text = models.TextField()
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    def __str__(self):
+        return f"Idea escrita por {self.user.username}"

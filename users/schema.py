@@ -5,13 +5,19 @@ from graphene_django.types import DjangoObjectType
 from graphql_jwt.decorators import login_required
 from django.contrib.auth.tokens import default_token_generator
 from django.core.mail import send_mail
-from users.models import User
+from users.models import User, Idea
 
 
 class UserType(DjangoObjectType):
     class Meta:
         model = User
         fields = ("id", "username", "email", "password")
+
+
+class IdeaType(DjangoObjectType):
+    class Meta:
+        model = Idea
+        fields = ("id", "user", "text", "created_at")
     
 
 
@@ -19,7 +25,7 @@ class UserType(DjangoObjectType):
 ########## Metodos tipicos CRUD ################
 ################################################
 
-# Create
+# CreateUser
 class CreateUser(graphene.Mutation):
     class Arguments:
         username = graphene.String()
@@ -33,6 +39,24 @@ class CreateUser(graphene.Mutation):
         user.set_password(password)
         user.save()
         return CreateUser(user=user)
+
+# CreateIdea
+class CreateIdea(graphene.Mutation):
+    class Arguments:
+        text = graphene.String(required=True)
+
+    idea = graphene.Field(IdeaType)
+
+    def mutate(self, info, text):
+        # Verificamos si el usuario esta autenticado.
+        user = info.context.user  # Obtenemos el user
+        if user.is_authenticated:
+            idea = Idea(user=user, text=text)
+            idea.save()
+            return CreateIdea(idea=idea)
+        else:
+            raise Exception('Usuario no logueado.')
+        
     
 # Delete
 class DeleteUser(graphene.Mutation):
@@ -175,6 +199,7 @@ class Query(graphene.ObjectType):
 
 class Mutation(graphene.ObjectType):
     create_user = CreateUser.Field()
+    create_idea = CreateIdea.Field()
     delete_user = DeleteUser.Field()
     update_user = UpdateUser.Field()
     token_auth_with_email = TokenAuthWithEmail.Field()
