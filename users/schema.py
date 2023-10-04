@@ -2,6 +2,7 @@ import graphene
 from graphene_django import DjangoObjectType
 import graphql_jwt
 from graphene_django.types import DjangoObjectType
+from graphql_jwt.decorators import login_required
 from users.models import User
 
 
@@ -11,6 +12,12 @@ class UserType(DjangoObjectType):
         fields = ("id", "username", "email", "password")
     
 
+
+################################################
+########## Metodos tipicos CRUD ################
+################################################
+
+# Create
 class CreateUser(graphene.Mutation):
     class Arguments:
         username = graphene.String()
@@ -25,7 +32,7 @@ class CreateUser(graphene.Mutation):
         user.save()
         return CreateUser(user=user)
     
-
+# Delete
 class DeleteUser(graphene.Mutation):
     class Arguments:
         username = graphene.String(required=True)
@@ -40,7 +47,7 @@ class DeleteUser(graphene.Mutation):
         except User.DoesNotExist:
             return DeleteUser(message=f"Usuario {username} no encontrado")
 
-
+# Update
 class UpdateUser(graphene.Mutation):
     class Arguments:
         id = graphene.ID(required=True)
@@ -58,6 +65,12 @@ class UpdateUser(graphene.Mutation):
         user.save()
         return UpdateUser(user=user)
     
+
+
+################################################
+##### Autenticacion mediante email y pass ######
+################################################
+
 class TokenAuthWithEmail(graphql_jwt.JSONWebTokenMutation):
     user = graphene.Field(UserType)
 
@@ -68,7 +81,34 @@ class TokenAuthWithEmail(graphql_jwt.JSONWebTokenMutation):
     @classmethod
     def resolve(cls, root, info, **kwargs):
         return cls(user=info.context.user)
+    
 
+
+################################################
+########### Cambio de password #################
+################################################
+
+class ChangePassword(graphene.Mutation):
+    class Arguments:
+        old_password = graphene.String(required=True)
+        new_password = graphene.String(required=True)
+
+    success = graphene.Boolean()
+
+    @login_required # El usuario debe haber iniciado sesion previamente antes de intentar cambiar su contraseña (en 0.0.0.0/admin). 
+    def mutate(self, info, old_password, new_password):
+        user = info.context.user
+        if not user.check_password(old_password):
+            raise Exception("La contraseña actual es incorrecta.")
+        user.set_password(new_password)
+        user.save()
+        return ChangePassword(success=True)
+
+
+
+################################################
+########### Consultas de datos# #################
+################################################
 
 class Query(graphene.ObjectType):
     hello = graphene.String(default_value="Hi!")
@@ -82,10 +122,16 @@ class Query(graphene.ObjectType):
         return User.objects.all()
 
 
+
+################################################
+################## Mutation ####################
+################################################
+
 class Mutation(graphene.ObjectType):
     create_user = CreateUser.Field()
     delete_user = DeleteUser.Field()
     update_user = UpdateUser.Field()
     token_auth_with_email = TokenAuthWithEmail.Field()
+    change_password = ChangePassword.Field()
 
 schema = graphene.Schema(query=Query, mutation=Mutation)
