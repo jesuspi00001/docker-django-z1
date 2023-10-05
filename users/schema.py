@@ -415,6 +415,7 @@ class Query(graphene.ObjectType):
     followers = graphene.List(UserType)
     search_others_users = graphene.List(UserType, username=graphene.String(required=True))
     ideas_by_user = graphene.List(IdeaType, username=graphene.String(required=True))
+    timeline = graphene.List(IdeaType)
 
     def resolve_user(self, info, id):
         return User.objects.get(pk=id)
@@ -484,7 +485,7 @@ class Query(graphene.ObjectType):
 
     def resolve_ideas_by_user(self, info, username):
         user = User.objects.get(username=username)
-        current_user = info.context.user  # Usuario que realiza la consulta
+        current_user = info.context.user  # Usuario que realiza la consulta.
         if not current_user.is_authenticated:
             raise Exception('Usuario no logueado.')
         if current_user == user:
@@ -498,6 +499,18 @@ class Query(graphene.ObjectType):
                 Q(visibility='protected', user__userfollowerlist__followers=current_user) |
                 Q(visibility='private', user=user)
             )
+        
+    # Similar a ideas_by_user, aqui devolvemos todas las visiables para el usuario.
+    def resolve_timeline(self, info):
+        user = info.context.user  # Usuario que realiza la consulta.
+        if not user.is_authenticated:
+            raise Exception('Usuario no logueado.')
+        # Usaremos el operador Q de django para construir una consulta con multiples condiciones.
+        return Idea.objects.filter(
+            Q(visibility='public') |
+            Q(visibility='protected', user__userfollowerlist__followers=user) |
+            Q(visibility='private', user=user)
+        )
 
 
 
