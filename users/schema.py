@@ -329,15 +329,15 @@ class RespondToFollowRequest(graphene.Mutation):
 
         # Actualizamos las relaciones de seguidores y seguidos en el UserFollowerList.
         if response == 'accepted':
-            requester_user_profile = follow_request.requester.userfollowerlist
-            target_user_profile = follow_request.target_user.userfollowerlist
+            requester_user= follow_request.requester
+            target_user = follow_request.target_user
 
             # Agregamos el solicitante a la lista de seguidores del objetivo.
-            target_user_profile.followers.add(requester_user_profile.user)
+            target_user.followers.add(requester_user)
 
             # Agregamos el objetivo a la lista de seguidos del solicitante.
-            requester_user_profile.following.add(target_user_profile.user)
-            
+            requester_user.following.add(target_user)
+
         return RespondToFollowRequest(follow_request=follow_request)
 
 
