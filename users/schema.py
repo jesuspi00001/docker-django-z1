@@ -167,14 +167,14 @@ class UpdateIdea(graphene.Mutation):
     def mutate(self, info, idea_id, text, visibility):
         user = info.context.user
         if not user.is_authenticated:
-            raise Exception('Usuario no autenticado')
+            raise Exception('Usuario no logueado.')
         
         if visibility not in ["public", "private", "protected"]:
             raise Exception('Visibility debe ser: public, private o protected.')
 
         idea = Idea.objects.get(pk=idea_id)
         if idea.user != user:
-            raise Exception('No tienes permiso para editar esta idea')
+            raise Exception('No tienes permiso para editar esta idea.')
         
         # El metodo permitira actualizar tanto el text como la visibility.
         idea.text = text
@@ -268,6 +268,44 @@ class SendResetPasswordEmail(graphene.Mutation):
 
 
 
+##########################################################
+### Lista solicitudes recibidas para aprobar o denegar ###
+##########################################################
+class RespondToFollowRequest(graphene.Mutation):
+    class Arguments:
+        request_id = graphene.ID(required=True)
+        response = graphene.String(required=True)  # Tomara como valores accepted o rejected.
+
+    follow_request = graphene.Field(FollowRequestType)
+
+    def mutate(self, info, request_id, response):
+        user = info.context.user
+        if not user.is_authenticated:
+            raise Exception('Usuario no logueado.')
+
+        follow_request = FollowRequest.objects.get(pk=request_id)
+
+        # Comprobamos si el usuario logueado es el mismo que el de la solicitud (target_user).
+        if user != follow_request.target_user:
+            raise Exception('No tienes permiso para responder a esta solicitud.')
+
+        # Comprobamos que la solicitud aun no ha sido respondida.
+        if follow_request.status != 'pending':
+            raise Exception('Ya has respondido a la solicitud.')
+
+        # Asignamos accepted o rejected.
+        if response == 'accepted':
+            follow_request.status = 'accepted'
+        elif response == 'rejected':
+            follow_request.status = 'rejected'
+        else:
+            raise Exception('follow_request.status debe ser: accepted o rejected.')
+
+        follow_request.save()
+        return RespondToFollowRequest(follow_request=follow_request)
+
+
+
 ################################################
 ########### Consultas de datos# #################
 ################################################
@@ -279,6 +317,7 @@ class Query(graphene.ObjectType):
     ideas = graphene.List(IdeaType)
     visible_ideas = graphene.List(IdeaType)
     user_ideas = graphene.List(IdeaType)
+    follow_requests = graphene.List(FollowRequestType)
 
     def resolve_user(self, info, id):
         return User.objects.get(pk=id)
@@ -293,13 +332,11 @@ class Query(graphene.ObjectType):
         user = info.context.user
         if not user.is_authenticated:
             raise Exception('Usuario no logueado.')
-
         # Ahora nos quedamos solo con las ideas que el usuario puede ver (usuario logueado en 0.0.0.0/admin).
         public_ideas = Idea.objects.filter(visibility='public')
         followed_users = user.followed_users.all()
         protected_ideas = Idea.objects.filter(visibility='protected', user__in=followed_users)
         private_ideas = Idea.objects.filter(visibility='private', user=user)
-
         # Metemos todas las ideas visibles para ese usuario en una variable y lo devolvemos.
         all_ideas = list(public_ideas) + list(protected_ideas) + list(private_ideas)
         return all_ideas
@@ -307,11 +344,16 @@ class Query(graphene.ObjectType):
     def resolve_user_ideas(self, info):
         user = info.context.user
         if not user.is_authenticated:
-            raise Exception('Usuario no autenticado')
-        
+            raise Exception('Usuario no logueado.')
         # Cogemos todas las ideas de ese usuario y las metemos en una lista ordenadas por fecha de creacion descendente.
         ideas = Idea.objects.filter(user=user).order_by('-created_at')
         return ideas
+
+    def resolve_follow_requests(self, info):
+        user = info.context.user
+        if not user.is_authenticated:
+            raise Exception('Usuario no logueado.')
+        return FollowRequest.objects.filter(target_user=user)
 
 
 
@@ -330,5 +372,6 @@ class Mutation(graphene.ObjectType):
     token_auth_with_email = TokenAuthWithEmail.Field()
     change_password = ChangePassword.Field()
     send_reset_password_email = SendResetPasswordEmail.Field()
+    respond_to_follow_request = RespondToFollowRequest.Field()
 
 schema = graphene.Schema(query=Query, mutation=Mutation)
