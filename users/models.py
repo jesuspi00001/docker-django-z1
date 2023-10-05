@@ -45,3 +45,11 @@ class FollowRequest(models.Model):
 
     def __str__(self):
         return f'{self.requester.username} -> {self.target_user.username} ({self.status})'
+
+
+class UserFollowerList(models.Model):
+    user = models.OneToOneField(User, on_delete=models.CASCADE)
+    following = models.ManyToManyField(User, related_name='followers')
+
+    def __str__(self):
+        return self.user

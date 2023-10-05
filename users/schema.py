@@ -5,7 +5,7 @@ from graphene_django.types import DjangoObjectType
 from graphql_jwt.decorators import login_required
 from django.contrib.auth.tokens import default_token_generator
 from django.core.mail import send_mail
-from users.models import User, Idea, FollowRequest
+from users.models import User, Idea, FollowRequest, UserFollowerList
 
 
 class UserType(DjangoObjectType):
@@ -24,6 +24,12 @@ class FollowRequestType(DjangoObjectType):
     class Meta:
         model = FollowRequest
         fields = ("id", "requester", "target_user", "created_at", "status")
+
+
+class UserFollowerListType(DjangoObjectType):
+    class Meta:
+        model = UserFollowerList
+        fields = ("id", "user", "following")
     
 
 
@@ -69,6 +75,7 @@ class CreateIdea(graphene.Mutation):
             raise Exception('Usuario no logueado.')
 
 
+# CreateFollowRequest
 class CreateFollowRequest(graphene.Mutation):
     class Arguments:
         target_username = graphene.String(required=True)
@@ -91,7 +98,7 @@ class CreateFollowRequest(graphene.Mutation):
         if existing_request:
             raise Exception('Ya has enviado una solicitud a este usuario.')
 
-        # Crear una nueva solicitud de seguimiento
+        # Creamos una nueva solicitud de seguimiento
         follow_request = FollowRequest(
             requester=user,
             target_user=target_user,
@@ -99,6 +106,23 @@ class CreateFollowRequest(graphene.Mutation):
         )
         follow_request.save()
         return CreateFollowRequest(follow_request=follow_request)
+    
+
+# CreateUserFollowerList
+class CreateUserFollowerList(graphene.Mutation):
+    class Arguments:
+        username = graphene.String(required=True)
+
+    userfollowerlist = graphene.Field(UserFollowerListType)
+
+    def mutate(self, info, username):
+        user = User.objects.get(username=username)
+
+        # Creamos una instancia de UserFollowerList asociada a ese usuario.
+        userfollowerlist = UserFollowerList(user=user)
+        userfollowerlist.save()
+
+        return CreateUserFollowerList(userfollowerlist=userfollowerlist)
     
     
 # DeleteUser
@@ -302,6 +326,18 @@ class RespondToFollowRequest(graphene.Mutation):
             raise Exception('follow_request.status debe ser: accepted o rejected.')
 
         follow_request.save()
+
+        # Actualizamos las relaciones de seguidores y seguidos en el UserFollowerList.
+        if response == 'accepted':
+            requester_user_profile = follow_request.requester.userfollowerlist
+            target_user_profile = follow_request.target_user.userfollowerlist
+
+            # Agregamos el solicitante a la lista de seguidores del objetivo.
+            target_user_profile.followers.add(requester_user_profile.user)
+
+            # Agregamos el objetivo a la lista de seguidos del solicitante.
+            requester_user_profile.following.add(target_user_profile.user)
+            
         return RespondToFollowRequest(follow_request=follow_request)
 
 
@@ -318,6 +354,8 @@ class Query(graphene.ObjectType):
     visible_ideas = graphene.List(IdeaType)
     user_ideas = graphene.List(IdeaType)
     follow_requests = graphene.List(FollowRequestType)
+    following = graphene.List(UserType)
+    followers = graphene.List(UserType)
 
     def resolve_user(self, info, id):
         return User.objects.get(pk=id)
@@ -354,6 +392,26 @@ class Query(graphene.ObjectType):
         if not user.is_authenticated:
             raise Exception('Usuario no logueado.')
         return FollowRequest.objects.filter(target_user=user)
+    
+    def resolve_following(self, info):
+        user = info.context.user
+        if not user.is_authenticated:
+            raise Exception('Usuario no logueado.')
+        try:
+            user_profile = UserFollowerList.objects.get(user=user)
+        except UserFollowerList.DoesNotExist:
+            raise Exception('Perfil de usuario no encontrado.')
+        return user_profile.following.all()
+
+    def resolve_followers(self, info):
+        user = info.context.user
+        if not user.is_authenticated:
+            raise Exception('Usuario no logueado.')
+        try:
+            user_profile = UserFollowerList.objects.get(user=user)
+        except UserFollowerList.DoesNotExist:
+            raise Exception('Perfil de usuario no encontrado.')
+        return user_profile.followers.all()
 
 
 
@@ -365,6 +423,7 @@ class Mutation(graphene.ObjectType):
     create_user = CreateUser.Field()
     create_idea = CreateIdea.Field()
     create_follow_request = CreateFollowRequest.Field()
+    create_userfollowerlist = CreateUserFollowerList.Field()
     delete_user = DeleteUser.Field()
     delete_idea = DeleteIdea.Field()
     update_user = UpdateUser.Field()
