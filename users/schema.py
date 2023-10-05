@@ -6,6 +6,7 @@ from graphql_jwt.decorators import login_required
 from django.contrib.auth.tokens import default_token_generator
 from django.core.mail import send_mail
 from users.models import User, Idea, FollowRequest, UserFollowerList
+from django.db.models import Q
 
 
 class UserType(DjangoObjectType):
@@ -412,7 +413,8 @@ class Query(graphene.ObjectType):
     follow_requests = graphene.List(FollowRequestType)
     following = graphene.List(UserType)
     followers = graphene.List(UserType)
-    searchothersusers = graphene.List(UserType, username=graphene.String(required=True))
+    search_others_users = graphene.List(UserType, username=graphene.String(required=True))
+    ideas_by_user = graphene.List(IdeaType, username=graphene.String(required=True))
 
     def resolve_user(self, info, id):
         return User.objects.get(pk=id)
@@ -423,6 +425,7 @@ class Query(graphene.ObjectType):
     def resolve_ideas(self, info):
         return Idea.objects.all()
     
+
     def resolve_visible_ideas(self, info):
         user = info.context.user
         if not user.is_authenticated:
@@ -435,7 +438,8 @@ class Query(graphene.ObjectType):
         # Metemos todas las ideas visibles para ese usuario en una variable y lo devolvemos.
         all_ideas = list(public_ideas) + list(protected_ideas) + list(private_ideas)
         return all_ideas
-    
+
+
     def resolve_user_ideas(self, info):
         user = info.context.user
         if not user.is_authenticated:
@@ -444,12 +448,14 @@ class Query(graphene.ObjectType):
         ideas = Idea.objects.filter(user=user).order_by('-created_at')
         return ideas
 
+
     def resolve_follow_requests(self, info):
         user = info.context.user
         if not user.is_authenticated:
             raise Exception('Usuario no logueado.')
         return FollowRequest.objects.filter(target_user=user)
-    
+
+
     def resolve_following(self, info):
         user = info.context.user
         if not user.is_authenticated:
@@ -459,6 +465,7 @@ class Query(graphene.ObjectType):
         except UserFollowerList.DoesNotExist:
             raise Exception('Perfil de usuario no encontrado.')
         return user_profile.following.all()
+
 
     def resolve_followers(self, info):
         user = info.context.user
@@ -470,8 +477,27 @@ class Query(graphene.ObjectType):
             raise Exception('Perfil de usuario no encontrado.')
         return user_profile.followers.all()
     
+
     def resolve_search_others_users(self, info, username):
         return User.objects.filter(username=username) # __icontains: operador de consulta django que permite buscar una coincidencia parcial obviando mayusculas.
+    
+
+    def resolve_ideas_by_user(self, info, username):
+        user = User.objects.get(username=username)
+        current_user = info.context.user  # Usuario que realiza la consulta
+        if not current_user.is_authenticated:
+            raise Exception('Usuario no logueado.')
+        if current_user == user:
+            # Si el usuario consulta sus propias ideas puede verlas todas.
+            return Idea.objects.filter(user=user)
+        else:
+            # Si el usuario consulta las ideas de otro usuario debemos aplicar reglas de visibilidad.
+            # Usaremos el operador Q de django para construir una consulta con multiples condiciones.
+            return Idea.objects.filter(
+                Q(visibility='public') |
+                Q(visibility='protected', user__userfollowerlist__followers=current_user) |
+                Q(visibility='private', user=user)
+            )
 
 
 
