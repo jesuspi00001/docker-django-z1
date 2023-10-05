@@ -412,6 +412,7 @@ class Query(graphene.ObjectType):
     follow_requests = graphene.List(FollowRequestType)
     following = graphene.List(UserType)
     followers = graphene.List(UserType)
+    searchothersusers = graphene.List(UserType, username=graphene.String(required=True))
 
     def resolve_user(self, info, id):
         return User.objects.get(pk=id)
@@ -468,6 +469,9 @@ class Query(graphene.ObjectType):
         except UserFollowerList.DoesNotExist:
             raise Exception('Perfil de usuario no encontrado.')
         return user_profile.followers.all()
+    
+    def resolve_search_others_users(self, info, username):
+        return User.objects.filter(username=username) # __icontains: operador de consulta django que permite buscar una coincidencia parcial obviando mayusculas.
 
 
 
