@@ -53,3 +53,10 @@ class UserFollowerList(models.Model):
 
     def __str__(self):
         return self.user
+
+
+class Notification(models.Model):
+    receiver = models.ForeignKey(User, on_delete=models.CASCADE, related_name='sent_notifications')
+    sender = models.ForeignKey(User, on_delete=models.CASCADE)
+    idea = models.ForeignKey(Idea, on_delete=models.CASCADE)
+    created_at = models.DateTimeField(auto_now_add=True)

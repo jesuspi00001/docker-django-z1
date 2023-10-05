@@ -5,7 +5,7 @@ from graphene_django.types import DjangoObjectType
 from graphql_jwt.decorators import login_required
 from django.contrib.auth.tokens import default_token_generator
 from django.core.mail import send_mail
-from users.models import User, Idea, FollowRequest, UserFollowerList
+from users.models import User, Idea, FollowRequest, UserFollowerList, Notification
 from django.db.models import Q
 
 
@@ -31,6 +31,12 @@ class UserFollowerListType(DjangoObjectType):
     class Meta:
         model = UserFollowerList
         fields = ("id", "user", "following")
+
+
+class NotificationType(DjangoObjectType):
+    class Meta:
+        model = Notification
+        fields = ("id", "receiver", "sender", "idea", "created_at")
     
 
 
@@ -71,6 +77,18 @@ class CreateIdea(graphene.Mutation):
             
             idea = Idea(user=user, text=text, visibility=visibility)
             idea.save()
+
+            # Una vez creada la idea, implementamos la logica que nos permitira enviar notificacion a los seguidores.
+            if visibility in ["public", "protected"]: # Solo notificaremos si es publica o protegida.
+                followers = user.followers.all()
+                for follower in followers:
+                    notification = Notification(
+                        recipient=follower,
+                        sender=user,
+                        idea=idea,
+                    )
+                    notification.save()
+
             return CreateIdea(idea=idea)
         else:
             raise Exception('Usuario no logueado.')
@@ -416,6 +434,7 @@ class Query(graphene.ObjectType):
     search_others_users = graphene.List(UserType, username=graphene.String(required=True))
     ideas_by_user = graphene.List(IdeaType, username=graphene.String(required=True))
     timeline = graphene.List(IdeaType)
+    notifications = graphene.List(NotificationType)
 
     def resolve_user(self, info, id):
         return User.objects.get(pk=id)
@@ -512,6 +531,10 @@ class Query(graphene.ObjectType):
             Q(visibility='private', user=user)
         )
 
+
+    def resolve_notifications(self, info):
+        user = info.context.user
+        return Notification.objects.filter(receiver=user)
 
 
 ################################################
