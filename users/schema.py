@@ -368,6 +368,33 @@ class UnfollowUser(graphene.Mutation):
             return UnfollowUser(success=True, message=f"Dejaste de seguir a {user_to_unfollow.username}.")
         else:
             return UnfollowUser(success=False, message=f"No sigues a {user_to_unfollow.username}.")
+        
+
+
+########################################################
+############## Eliminar a un seguidor ##################
+########################################################
+class RemoveFollower(graphene.Mutation):
+    class Arguments:
+        user_to_remove = graphene.String(required=True)
+
+    success = graphene.Boolean()
+    message = graphene.String()
+
+    def mutate(self, info, user_to_remove):
+        user = info.context.user
+        try:
+            user_to_remove_ = User.objects.get(username=user_to_remove)
+        except User.DoesNotExist:
+            return UnfollowUser(success=False, message="El usuario que quieres sacar de tu lista de seguidores no existe.")
+
+        # Comprobamos si el usuario a eliminar es seguidor del usuario logueado, en caso contrario no podemos eliminarlo.
+        user_follower_list = user.userfollowerlist
+        if user_follower_list.followers.filter(user=user_to_remove_).exists():
+            user_follower_list.followers.remove(user_to_remove_)
+            return UnfollowUser(success=True, message=f"Eliminaste a {user_to_remove_.username} de tu lista de seguidores.")
+        else:
+            return UnfollowUser(success=False, message=f"EL usuario {user_to_remove_.username} no te sigue.")
 
 
 
@@ -462,5 +489,6 @@ class Mutation(graphene.ObjectType):
     send_reset_password_email = SendResetPasswordEmail.Field()
     respond_to_follow_request = RespondToFollowRequest.Field()
     unfollow_user = UnfollowUser.Field()
+    remove_follower = RemoveFollower.Field()
 
 schema = graphene.Schema(query=Query, mutation=Mutation)
