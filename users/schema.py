@@ -295,6 +295,7 @@ class SendResetPasswordEmail(graphene.Mutation):
 ##########################################################
 ### Lista solicitudes recibidas para aprobar o denegar ###
 ##########################################################
+
 class RespondToFollowRequest(graphene.Mutation):
     class Arguments:
         request_id = graphene.ID(required=True)
@@ -339,11 +340,39 @@ class RespondToFollowRequest(graphene.Mutation):
             requester_user.following.add(target_user)
 
         return RespondToFollowRequest(follow_request=follow_request)
+    
+
+
+########################################################
+############# Dejar de seguir a alguien ################
+########################################################
+
+class UnfollowUser(graphene.Mutation):
+    class Arguments:
+        user_to_unfollow = graphene.String(required=True)
+
+    success = graphene.Boolean()
+    message = graphene.String()
+
+    def mutate(self, info, user_to_unfollow_id):
+        user = info.context.user
+        try:
+            user_to_unfollow = User.objects.get(username=user_to_unfollow)
+        except User.DoesNotExist:
+            return UnfollowUser(success=False, message="El usuario que quieres dejar de seguir no existe.")
+
+        # Comprobamos si sigue a ese usuario, en caso contrario no podemos dejar de seguirlo.
+        user_follower_list = user.userfollowerlist
+        if user_follower_list.following.filter(user=user_to_unfollow).exists():
+            user_follower_list.following.remove(user_to_unfollow)
+            return UnfollowUser(success=True, message=f"Dejaste de seguir a {user_to_unfollow.username}.")
+        else:
+            return UnfollowUser(success=False, message=f"No sigues a {user_to_unfollow.username}.")
 
 
 
 ################################################
-########### Consultas de datos# #################
+########### Consultas de datos# ################
 ################################################
 
 class Query(graphene.ObjectType):
@@ -432,5 +461,6 @@ class Mutation(graphene.ObjectType):
     change_password = ChangePassword.Field()
     send_reset_password_email = SendResetPasswordEmail.Field()
     respond_to_follow_request = RespondToFollowRequest.Field()
+    unfollow_user = UnfollowUser.Field()
 
 schema = graphene.Schema(query=Query, mutation=Mutation)
